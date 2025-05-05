@@ -1,22 +1,15 @@
-import glob
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
 import cv2
 import numpy as np
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1' 
 from datetime import datetime
 import pandas as pd
 from transformers import pipeline
 from deepface import DeepFace
 import tempfile
 import tensorflow as tf
-import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
-import shutil
-import random
-
 
 # Page configuration
 st.set_page_config(page_title="VisionText AI Hub", page_icon="🧠", layout="wide")
@@ -485,7 +478,7 @@ with tabs[2]:
         st.bar_chart(race_df.set_index('Ethnicity'))
     
     # Create tabs for different input methods within the face analysis tab
-    face_tabs = st.tabs(["Upload Image", "Live Webcam", "Find Similar Faces"])
+    face_tabs = st.tabs(["Upload Image", "Live Webcam"])
     
     with face_tabs[0]:
         st.header("Upload an Image")
@@ -574,224 +567,7 @@ with tabs[2]:
                     cap.release()
                     webcam_placeholder.empty()
                     results_placeholder.empty()
-    
-    with face_tabs[2]:
-        st.header("Find Similar Faces")
-        st.write("Upload an image to find similar faces in your dataset")
-        
-        # Setup for face database
-        db_path = st.text_input("Enter path to your face database folder", value="./images/")
-        model_name = st.selectbox("Select model", ["Facenet", "VGG-Face", "OpenFace", "DeepFace"], index=0)
-        distance_metric = st.selectbox("Select distance metric", ["cosine", "euclidean", "euclidean_l2"], index=0)
-        
-        # Create dataset section
-        with st.expander("Create/Manage Dataset"):
-            if st.button("Create Database Directory"):
-                os.makedirs(db_path, exist_ok=True)
-                st.success(f"Created directory {db_path}")
-            
-            # Option to download LFW dataset
-            if st.button("Download LFW Dataset"):
-                with st.spinner("Downloading LFW dataset..."):
-                    try:
-                        from torchvision.datasets import LFWPeople
-                        dataset = LFWPeople(root='./', download=True)
-                        st.success("Downloaded LFW dataset successfully!")
-                    except Exception as e:
-                        st.error(f"Error downloading dataset: {str(e)}")
-            
-            # Option to sample from LFW to database
-            if os.path.exists('./lfw-py/lfw_funneled/'):
-                sampling_rate = st.slider("Sampling rate (% of images to copy)", min_value=1, max_value=50, value=20)
-                
-                if st.button("Sample Images to Database"):
-                    with st.spinner("Sampling images..."):
-                        os.makedirs(db_path, exist_ok=True)
-                        sampled_count = 0
-                        
-                        for img in glob.glob('./lfw-py/lfw_funneled/*/*jpg', recursive=True):
-                            if random.uniform(0,1) < (sampling_rate/100):
-                                shutil.copy(img, db_path)
-                                sampled_count += 1
-                        
-                        st.success(f"Done! Copied {sampled_count} images to {db_path}")
-        
-        # Upload and find similar faces
-        uploaded_file = st.file_uploader("Upload a face image", type=["jpg", "jpeg", "png"], key="similar_face_uploader")
-        
-        if uploaded_file is not None:
-            # Display the uploaded image
-            st.subheader("Query Image")
-            file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-            uploaded_file.seek(0)
-            image = cv2.imdecode(file_bytes, 1)
-            st.image(image, channels="BGR")
-            
-            # Save the uploaded file to a temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                temp_filename = temp_file.name
-                temp_file.write(uploaded_file.getvalue())
-            
-            # Find similar faces button
-            if st.button("Find Similar Faces"):
-                try:
-                    with st.spinner("Finding similar faces..."):
-                        # Check if the database directory exists and has images
-                        if not os.path.exists(db_path):
-                            st.error(f"Database path {db_path} does not exist!")
-                        else:
-                            image_files = glob.glob(os.path.join(db_path, "*.jpg")) + \
-                                         glob.glob(os.path.join(db_path, "*.jpeg")) + \
-                                         glob.glob(os.path.join(db_path, "*.png"))
-                            
-                            if len(image_files) == 0:
-                                st.warning(f"No images found in {db_path}. Please add some images first.")
-                            else:
-                                # Find similar faces
-                                dfs = DeepFace.find(
-                                    img_path=temp_filename,
-                                    db_path=db_path,
-                                    model_name=model_name,
-                                    distance_metric=distance_metric,
-                                    enforce_detection=False,
-                                    silent=True
-                                )
-                                
-                                if len(dfs) > 0 and len(dfs[0]) > 0:
-                                    # Display results
-                                    st.subheader("Similar Faces")
-                                    
-                                    # Limit to top 4 results
-                                    num_results = min(4, len(dfs[0]))
-                                    
-                                    # Create a grid to display results
-                                    cols = st.columns(num_results)
-                                    
-                                    for i in range(num_results):
-                                        with cols[i]:
-                                            img_path = dfs[0]['identity'][i]
-                                            distance = dfs[0]['distance'][i]
-                                            
-                                            # Display the image
-                                            img = plt.imread(img_path)
-                                            st.image(img, caption=f"Similarity: {(1-distance)*100:.1f}%")
-                                            
-                                            # Analyze and display face attributes
-                                            try:
-                                                analysis = DeepFace.analyze(
-                                                    img_path=img_path,
-                                                    actions=['age', 'gender', 'emotion', 'race'],
-                                                    enforce_detection=False,
-                                                    silent=True
-                                                )
-                                                
-                                                if isinstance(analysis, list):
-                                                    analysis = analysis[0]
-                                                
-                                                st.write(f"Age: {analysis['age']:.1f}")
-                                                st.write(f"Gender: {max(analysis['gender'], key=analysis['gender'].get)}")
-                                                st.write(f"Emotion: {max(analysis['emotion'], key=analysis['emotion'].get)}")
-                                                st.write(f"Ethnicity: {max(analysis['race'], key=analysis['race'].get)}")
-                                            except Exception as e:
-                                                st.error(f"Error analyzing similar face: {str(e)}")
-                                else:
-                                    st.warning("No similar faces found!")
-                
-                except Exception as e:
-                    st.error(f"Error finding similar faces: {str(e)}")
                     
-                # Clean up
-                os.unlink(temp_filename)
-                                
-            # Advanced visualization option
-            with st.expander("Advanced Visualization"):
-                if st.button("Generate Visualization Panel"):
-                    try:
-                        with st.spinner("Generating visualization..."):
-                            # Find similar faces
-                            dfs = DeepFace.find(
-                                img_path=temp_filename,
-                                db_path=db_path,
-                                model_name=model_name,
-                                distance_metric=distance_metric,
-                                enforce_detection=False,
-                                silent=True
-                            )
-                            
-                            if len(dfs) > 0 and len(dfs[0]) >= 3:
-                                # Create visualization panel
-                                panel = [plt.imread(temp_filename)]
-                                
-                                # Function to create text analysis image
-                                def txt_analyze(d):
-                                    # Create an image with the analysis results
-                                    image = Image.new('RGB', (250, 100), 'white')
-                                    draw = ImageDraw.Draw(image)
-                                    
-                                    # Try to use a system font
-                                    try:
-                                        font = ImageFont.truetype('/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', 24)
-                                    except:
-                                        # Fallback to default
-                                        font = ImageFont.load_default()
-                                    
-                                    gender = d['dominant_gender'] if 'dominant_gender' in d else max(d['gender'], key=d['gender'].get)
-                                    age = d['age']
-                                    emotion = d['dominant_emotion'] if 'dominant_emotion' in d else max(d['emotion'], key=d['emotion'].get)
-                                    race = d['dominant_race'] if 'dominant_race' in d else max(d['race'], key=d['race'].get)
-                                    
-                                    draw.text((30, 5), f"{gender.lower()}, {age}", font=font, fill='blue')
-                                    draw.text((30, 35), emotion, font=font, fill='blue')
-                                    draw.text((30, 65), race, font=font, fill='blue')
-                                    return np.array(image)
-                                
-                                # Analyze original image
-                                query_obj = DeepFace.analyze(
-                                    img_path=temp_filename,
-                                    actions=['age', 'gender', 'emotion', 'race'],
-                                    enforce_detection=False,
-                                    silent=True
-                                )
-                                if isinstance(query_obj, list):
-                                    query_obj = query_obj[0]
-                                
-                                # Add query image with analysis
-                                panel[0] = np.vstack((panel[0], txt_analyze(query_obj)))
-                                
-                                # Add top 3 similar faces with analysis
-                                for i in range(3):
-                                    imgfile = dfs[0]['identity'][i]
-                                    objs = DeepFace.analyze(
-                                        img_path=imgfile,
-                                        actions=['age', 'gender', 'emotion', 'race'],
-                                        enforce_detection=False,
-                                        silent=True
-                                    )
-                                    
-                                    if isinstance(objs, list):
-                                        objs = objs[0]
-                                    
-                                    panel += [np.vstack((plt.imread(imgfile), txt_analyze(objs)))]
-                                
-                                # Use matplotlib to create visualization
-                                fig = plt.figure(figsize=(10., 10.))
-                                grid = ImageGrid(fig, 111, nrows_ncols=(1, 4), axes_pad=0.1)
-                                
-                                for ax, im in zip(grid, panel):
-                                    ax.set_axis_off()
-                                    ax.imshow(im)
-                                
-                                # Display in Streamlit
-                                st.pyplot(fig)
-                            else:
-                                st.warning("Not enough similar faces found for visualization!")
-                    
-                    except Exception as e:
-                        st.error(f"Error generating visualization: {str(e)}")
-                        
-                    # Clean up
-                    os.unlink(temp_filename)
-                                        
 # Text Summarization tab
 with tabs[3]:
     st.markdown("<h2 class='sub-header'>Text Summarization</h2>", unsafe_allow_html=True)
