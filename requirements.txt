@@ -8,3 +8,4 @@ torch==2.2.0
 tensorflow==2.19.0
 tf-keras
 watchdog
+streamlit-webrtc
