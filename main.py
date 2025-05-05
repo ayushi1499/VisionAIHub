@@ -5,7 +5,7 @@ import av
 import cv2
 import numpy as np
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1' 
 from datetime import datetime
 import pandas as pd
 from transformers import pipeline
