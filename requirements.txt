@@ -7,3 +7,4 @@ numpy
 av
 tf_keras
 tensorflow
+matplotlib
