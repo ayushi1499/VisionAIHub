@@ -1,3 +1,4 @@
+import glob
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
@@ -10,6 +11,11 @@ from transformers import pipeline
 from deepface import DeepFace
 import tempfile
 import tensorflow as tf
+import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw, ImageFont
+import shutil
+import random
+
 
 # Page configuration
 st.set_page_config(page_title="VisionText AI Hub", page_icon="🧠", layout="wide")
