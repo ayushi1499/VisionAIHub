@@ -1,6 +1,5 @@
 matplotlib
 opencv-python-headless  # avoids GUI-related libGL.so.1 issues
-tensorflow
 torch
 transformers
 mtcnn
@@ -10,3 +9,5 @@ av
 Pillow
 watchdog
 deepface
+keras==2.11.0
+tensorflow==2.11.0
